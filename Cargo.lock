@@ -803,6 +803,7 @@ name = "tuff_common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "flatbuffers",
  "serde",
  "thiserror",
  "tuff_schemas",

@@ -9,7 +9,7 @@ mod events;
 
 use state_machine::{SystemState, State};
 use events::{TuffLogEntry, LogLevel, TuffEvent};
-use tuff_common::schemas::validate_index_chunk;
+use tuff_common::schemas::{build_minimal_index_chunk, validate_index_chunk};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -56,7 +56,23 @@ async fn main() -> Result<()> {
                                 }
                             }
                             None => {
-                                info!("IndexChunk not found yet; continuing in NORMAL.");
+                                info!("IndexChunk not found yet; creating placeholder.");
+                                let placeholder = build_minimal_index_chunk("tuff-volume", 1)?;
+                                if let Err(e) = fs.write_latest_index_chunk(&placeholder) {
+                                    error!("Failed to write placeholder IndexChunk: {}", e);
+                                    state.transition_to(State::Warn);
+                                    promote_normal = false;
+                                } else if let Ok(Some(back)) = fs.load_latest_index_chunk() {
+                                    if let Err(e) = validate_index_chunk(&back) {
+                                        error!("Post-write IndexChunk validation failed: {}", e);
+                                        state.transition_to(State::Warn);
+                                        promote_normal = false;
+                                    }
+                                } else {
+                                    error!("Post-write IndexChunk readback failed");
+                                    state.transition_to(State::Warn);
+                                    promote_normal = false;
+                                }
                             }
                         }
                         if promote_normal {
