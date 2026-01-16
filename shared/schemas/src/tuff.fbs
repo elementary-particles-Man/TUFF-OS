@@ -1,4 +1,4 @@
-// TUFF-FS Data Schema v1.0 (Final)
+// TUFF-FS Schema v1.5 (Final Architecture)
 namespace TuffOS;
 
 // --- Enums ---
@@ -9,11 +9,7 @@ enum EntryType : ubyte {
   Symlink = 2
 }
 
-// File attribute flags
-// 0x01 = Deleted (Tombstone)
-// 0x02 = Hidden
-// 0x04 = System
-// 0x08 = Encrypted (Content is implicitly encrypted by MK+ChunkID)
+// Flags for Files
 enum FileFlags : uint {
   None = 0,
   Deleted = 1,
@@ -22,40 +18,54 @@ enum FileFlags : uint {
   Encrypted = 8
 }
 
-// --- Tables ---
+// --- Initial Chunk (The Physical Anchor) ---
+// Written once at LBA 0 of each physical disk.
+table InitialChunk {
+  magic: uint64;          // Signature to identify TUFF-FS disk
+  volume_uuid: string;    // Logical Volume this disk belongs to
+  hw_id: uint64;          // Unique ID of THIS physical disk
+  mk_fingerprint: [ubyte];// SHA256(MK) to verify decryption key
+  created_at: int64;
+  sector_size: uint32;    // Physical sector size (e.g., 4096)
+}
 
-// Lightweight File Entry (~80-100 bytes typical)
+// --- Data Chunk Header (Inside Encrypted Payload) ---
+struct DataChunkHeader {
+  // No 'Parity' type anymore, just Data or Replica implicitly
+  flags: ubyte;
+  payload_len: ushort;
+  next_hw_id: uint64;   // Link to next chunk part
+  next_chunk_id: uint64;
+}
+
+// --- File Entry (Lightweight) ---
 table FileEntry {
-  // Identity
-  name: string (required, key); // Variable length UTF-8
-
-  // Metadata
+  name: string (required, key);
   size: uint64;
   type: EntryType = File;
   mtime: int64;
   mode: uint32;
   flags: uint32;
 
-  // Data Location
-  // Points to the first chunk. Subsequent chunks are linked within data chunks.
-  // Redundancy is handled by the writer scheduler, not stored here.
+  // Points to the start. The writer scheduler handles N-way replication.
   start_hw_id: uint64;
   start_chunk_id: uint64;
 }
 
-// Index Chunk Header (The Unit of Consistency)
+// --- Index Chunk Header (The Transaction Root) ---
 table IndexChunkHeader {
-  // Transaction Control
-  generation: uint8;  // 1-254 (Rolls over 0xFE -> 0x01)
-  wrote_flag: bool;   // 0=Processing, 1=Committed
-
-  // Lineage
+  generation: uint8;      // 1-254 (Rolls over)
+  wrote_flag: bool;       // 0=Processing, 1=Committed
   timestamp: int64;
+
+  // System-wide Settings stored in the latest index
+  // Scheduler policy: Prefer distinct HWs, fallback to same HW if necessary.
+  default_redundancy: ubyte; // e.g., 1=Single, 2=Mirror, 3=3N
+
+  volume_name: string;
   prev_chunk_hash: [ubyte];
-  volume_uuid: string;
 }
 
-// The Index Chunk Body
 table IndexChunk {
   header: IndexChunkHeader (required);
   entries: [FileEntry];
