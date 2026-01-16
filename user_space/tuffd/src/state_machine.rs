@@ -69,3 +69,45 @@ impl SystemState {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{State, SystemState};
+
+    #[test]
+    fn init_transitions_only_allow_waitkey_or_freeze() {
+        let mut state = SystemState::new();
+        assert!(state.transition_to(State::WaitKey));
+
+        let mut state = SystemState::new();
+        assert!(state.transition_to(State::Freeze));
+
+        let mut state = SystemState::new();
+        assert!(!state.transition_to(State::Normal));
+    }
+
+    #[test]
+    fn waitkey_to_normal_allowed() {
+        let mut state = SystemState::new();
+        assert!(state.transition_to(State::WaitKey));
+        assert!(state.transition_to(State::Normal));
+    }
+
+    #[test]
+    fn normal_flow_and_recovery_paths() {
+        let mut state = SystemState::new();
+        assert!(state.transition_to(State::WaitKey));
+        assert!(state.transition_to(State::Normal));
+        assert!(state.transition_to(State::Warn));
+        assert!(state.transition_to(State::Normal));
+        assert!(state.transition_to(State::Freeze));
+        assert!(state.transition_to(State::Shutdown));
+    }
+
+    #[test]
+    fn invalid_transitions_are_rejected() {
+        let mut state = SystemState::new();
+        assert!(!state.transition_to(State::Shutdown));
+        assert!(!state.transition_to(State::PendingOnly));
+    }
+}
