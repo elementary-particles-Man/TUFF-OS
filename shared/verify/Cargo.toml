@@ -3,8 +3,12 @@ name = "tuff_verify"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["aes"]
+aes = ["tuff_crypto/aes"]
+
 [dependencies]
 tuff_schemas = { path = "../schemas" }
-tuff_crypto = { path = "../crypto" }
+tuff_crypto = { path = "../crypto", default-features = false }
 sha2 = { version = "0.10", default-features = false }
 hex = { version = "0.4", default-features = false, features = ["alloc"] }

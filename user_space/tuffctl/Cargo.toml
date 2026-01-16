@@ -8,6 +8,7 @@ clap = { version = "4.4", features = ["derive"] }
 anyhow = "1.0"
 rand = "0.8"
 hex = "0.4"
+log = "0.4"
 console = "0.15" # For clean UI handling
 dialoguer = "0.10"
 tuff_common = { path = "../tuff_common" }
