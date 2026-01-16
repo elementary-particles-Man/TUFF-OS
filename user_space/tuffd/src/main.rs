@@ -9,6 +9,7 @@ mod events;
 
 use state_machine::{SystemState, State};
 use events::{TuffLogEntry, LogLevel, TuffEvent};
+use tuff_common::schemas::validate_index_chunk;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -44,7 +45,23 @@ async fn main() -> Result<()> {
                 match usb_monitor::wait_for_key().await {
                     Ok(Some((_key, uuid))) => {
                         info!("Key {} accepted.", uuid);
-                        state.transition_to(State::Normal);
+                        let fs = fs_manager::FsManager;
+                        let mut promote_normal = true;
+                        match fs.load_latest_index_chunk()? {
+                            Some(buf) => {
+                                if let Err(e) = validate_index_chunk(&buf) {
+                                    error!("IndexChunk validation failed: {}", e);
+                                    state.transition_to(State::Warn);
+                                    promote_normal = false;
+                                }
+                            }
+                            None => {
+                                info!("IndexChunk not found yet; continuing in NORMAL.");
+                            }
+                        }
+                        if promote_normal {
+                            state.transition_to(State::Normal);
+                        }
                         TuffLogEntry::new(
                             LogLevel::Info,
                             TuffEvent::StateTransition {
