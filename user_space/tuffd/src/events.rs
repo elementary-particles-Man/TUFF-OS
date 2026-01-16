@@ -25,6 +25,7 @@ pub enum TuffEvent {
     KeySearch { status: String },
     KeyDetected { device: String, key_uuid: String },
     KeyRejected { device: String, reason: String },
+    KeyMismatch { reason: String },
     MountSuccess { path: String },
     MountFailure { path: String, error: String },
     IoError { context: String, error: String },

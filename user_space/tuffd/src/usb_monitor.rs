@@ -1,10 +1,11 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use log::{info, debug};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Duration;
 use crate::events::{TuffLogEntry, LogLevel, TuffEvent};
+use nix::mount::{mount, umount2, MntFlags, MsFlags};
+use nix::errno::Errno;
 
 /// Polls /dev/disk/by-id for USB devices containing a valid TUFF Key.
 /// Returns the raw 32-byte key and the UUID (filename) if found.
@@ -50,22 +51,55 @@ pub async fn wait_for_key() -> Result<Option<(Vec<u8>, String)>> {
 
 fn scan_usb_devices() -> Result<Vec<PathBuf>> {
     let mut candidates = Vec::new();
-    let disk_dir = Path::new("/dev/disk/by-id");
+    let sys_block = Path::new("/sys/block");
 
-    if !disk_dir.exists() {
+    if !sys_block.exists() {
         return Ok(candidates);
     }
 
-    for entry in fs::read_dir(disk_dir)? {
+    for entry in fs::read_dir(sys_block)? {
         let entry = entry?;
         let name = entry.file_name().to_string_lossy().to_string();
+        let device_path = entry.path().join("device");
 
-        // Look for USB partitions (ending in -partX)
-        if name.starts_with("usb-") && name.contains("-part") {
-            candidates.push(entry.path());
+        if !is_usb_device(&device_path)? {
+            continue;
+        }
+
+        for part in list_partitions(&entry.path(), &name)? {
+            candidates.push(part);
         }
     }
     Ok(candidates)
+}
+
+fn is_usb_device(device_path: &Path) -> Result<bool> {
+    if !device_path.exists() {
+        return Ok(false);
+    }
+    let link = fs::read_link(device_path).with_context(|| {
+        format!("Failed to read link {}", device_path.display())
+    })?;
+    Ok(link.to_string_lossy().contains("/usb"))
+}
+
+fn list_partitions(block_path: &Path, base: &str) -> Result<Vec<PathBuf>> {
+    let mut parts = Vec::new();
+    for entry in fs::read_dir(block_path)? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name == "device" {
+            continue;
+        }
+        if !name.starts_with(base) || name == base {
+            continue;
+        }
+        let dev_path = Path::new("/dev").join(&name);
+        if dev_path.exists() {
+            parts.push(dev_path);
+        }
+    }
+    Ok(parts)
 }
 
 fn check_device_for_key(device_path: &Path) -> Result<Option<(Vec<u8>, String)>> {
@@ -73,37 +107,15 @@ fn check_device_for_key(device_path: &Path) -> Result<Option<(Vec<u8>, String)>>
     fs::create_dir_all(mount_point)?;
 
     // 1. Mount (Read-Only)
-    let status = Command::new("mount")
-        .arg("-o").arg("ro")
-        .arg(device_path)
-        .arg(mount_point)
-        .status();
-
-    match status {
-        Ok(s) if s.success() => {
-            // Success, proceed to check key
-        }
-        Ok(s) => {
-            let err_msg = format!("Mount command returned failure code: {:?}", s.code());
-            TuffLogEntry::new(
-                LogLevel::Warn,
-                TuffEvent::MountFailure {
-                    path: device_path.to_string_lossy().to_string(),
-                    error: err_msg,
-                },
-            ).log();
-            return Ok(None);
-        }
-        Err(e) => {
-            TuffLogEntry::new(
-                LogLevel::Error,
-                TuffEvent::MountFailure {
-                    path: device_path.to_string_lossy().to_string(),
-                    error: e.to_string(),
-                },
-            ).log();
-            return Ok(None);
-        }
+    if let Err(e) = mount_readonly(device_path, mount_point) {
+        TuffLogEntry::new(
+            LogLevel::Warn,
+            TuffEvent::MountFailure {
+                path: device_path.to_string_lossy().to_string(),
+                error: e.to_string(),
+            },
+        ).log();
+        return Ok(None);
     }
 
     // 2. Search for Key
@@ -140,8 +152,7 @@ fn check_device_for_key(device_path: &Path) -> Result<Option<(Vec<u8>, String)>>
     })();
 
     // 3. Unmount
-    let umount_status = Command::new("umount").arg(mount_point).status();
-    if let Err(e) = umount_status {
+    if let Err(e) = umount2(mount_point, MntFlags::MNT_DETACH) {
         TuffLogEntry::new(
             LogLevel::Error,
             TuffEvent::IoError {
@@ -152,4 +163,23 @@ fn check_device_for_key(device_path: &Path) -> Result<Option<(Vec<u8>, String)>>
     }
 
     result
+}
+
+fn mount_readonly(device_path: &Path, mount_point: &Path) -> Result<()> {
+    let fs_types = ["vfat", "exfat", "ext4", "ext3", "ext2"];
+    for fs_type in fs_types.iter() {
+        let res = mount(
+            Some(device_path),
+            mount_point,
+            Some(*fs_type),
+            MsFlags::MS_RDONLY,
+            None::<&str>,
+        );
+        match res {
+            Ok(()) => return Ok(()),
+            Err(Errno::EINVAL) => continue,
+            Err(_) => continue,
+        }
+    }
+    Err(anyhow::anyhow!("No supported filesystem for USB key"))
 }

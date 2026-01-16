@@ -1,19 +1,29 @@
 use anyhow::Result;
 use log::{info, error};
+use nix::mount::{mount, MsFlags};
+use nix::errno::Errno;
+use nix::unistd::getpid;
 use tokio::time::{sleep, Duration};
 
 mod state_machine;
 mod usb_monitor;
 mod fs_manager;
 mod events;
+mod mk_fingerprint;
 
 use state_machine::{SystemState, State};
 use events::{TuffLogEntry, LogLevel, TuffEvent};
 use tuff_common::schemas::{build_minimal_index_chunk, validate_index_chunk};
+use mk_fingerprint::{verify_or_store_mk_fingerprint, FingerprintStatus};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
+    if is_pid1() {
+        if let Err(e) = early_boot_setup() {
+            error!("Early boot setup failed: {}", e);
+        }
+    }
 
     TuffLogEntry::new(
         LogLevel::Info,
@@ -43,8 +53,42 @@ async fn main() -> Result<()> {
         match state.current() {
             State::WaitKey => {
                 match usb_monitor::wait_for_key().await {
-                    Ok(Some((_key, uuid))) => {
+                    Ok(Some((key, uuid))) => {
                         info!("Key {} accepted.", uuid);
+                        match verify_or_store_mk_fingerprint(&key) {
+                            Ok(FingerprintStatus::Matched) | Ok(FingerprintStatus::Stored) => {}
+                            Ok(FingerprintStatus::Mismatch) => {
+                                state.transition_to(State::Freeze);
+                                TuffLogEntry::new(
+                                    LogLevel::Error,
+                                    TuffEvent::KeyMismatch {
+                                        reason: "MK fingerprint mismatch; refusing to proceed".into(),
+                                    },
+                                ).log();
+                                TuffLogEntry::new(
+                                    LogLevel::Warn,
+                                    TuffEvent::StateTransition {
+                                        from: State::WaitKey,
+                                        to: State::Freeze,
+                                        reason: "MK fingerprint mismatch".into(),
+                                    },
+                                ).log();
+                                sleep(Duration::from_secs(10)).await;
+                                continue;
+                            }
+                            Err(e) => {
+                                state.transition_to(State::Warn);
+                                TuffLogEntry::new(
+                                    LogLevel::Error,
+                                    TuffEvent::IoError {
+                                        context: "MK fingerprint check failed".into(),
+                                        error: e.to_string(),
+                                    },
+                                ).log();
+                                sleep(Duration::from_secs(5)).await;
+                                continue;
+                            }
+                        }
                         let fs = fs_manager::FsManager;
                         let mut promote_normal = true;
                         match fs.load_latest_index_chunk()? {
@@ -107,5 +151,61 @@ async fn main() -> Result<()> {
                 sleep(Duration::from_secs(1)).await;
             }
         }
+    }
+}
+
+fn is_pid1() -> bool {
+    getpid().as_raw() == 1
+}
+
+fn early_boot_setup() -> Result<()> {
+    use std::fs;
+    use std::path::Path;
+
+    let dirs = ["/proc", "/sys", "/dev", "/dev/pts"];
+    for dir in dirs.iter() {
+        if !Path::new(dir).exists() {
+            fs::create_dir_all(dir)?;
+        }
+    }
+
+    mount_once(
+        Some("proc"),
+        "/proc",
+        Some("proc"),
+        MsFlags::MS_NOSUID | MsFlags::MS_NOEXEC | MsFlags::MS_NODEV,
+    )?;
+    mount_once(
+        Some("sysfs"),
+        "/sys",
+        Some("sysfs"),
+        MsFlags::MS_NOSUID | MsFlags::MS_NOEXEC | MsFlags::MS_NODEV,
+    )?;
+    mount_once(
+        Some("devtmpfs"),
+        "/dev",
+        Some("devtmpfs"),
+        MsFlags::MS_NOSUID,
+    )?;
+    mount_once(
+        Some("devpts"),
+        "/dev/pts",
+        Some("devpts"),
+        MsFlags::MS_NOSUID | MsFlags::MS_NOEXEC,
+    )?;
+
+    Ok(())
+}
+
+fn mount_once(
+    source: Option<&str>,
+    target: &str,
+    fstype: Option<&str>,
+    flags: MsFlags,
+) -> Result<()> {
+    match mount(source, target, fstype, flags, None::<&str>) {
+        Ok(()) => Ok(()),
+        Err(Errno::EBUSY) => Ok(()),
+        Err(e) => Err(e.into()),
     }
 }

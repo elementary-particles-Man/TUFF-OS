@@ -16,6 +16,7 @@ BUILDROOT_VER="2024.02"
 BUILDROOT_DIR="tf_core/buildroot"
 CONFIG_FILE="$(pwd)/tf_core/buildroot_config/tuff_defconfig"
 OVERLAY_DIR="$(pwd)/tf_core/overlay"
+KERNEL_FRAGMENT_FILE="$(pwd)/tf_core/buildroot_config/linux_fragment.config"
 
 # 1. Setup Buildroot
 if [ ! -d "$BUILDROOT_DIR" ]; then
@@ -33,11 +34,18 @@ rustup target add x86_64-unknown-linux-musl || true
 cargo build -p tuffd --target x86_64-unknown-linux-musl --release --no-default-features
 
 # 3. Prepare Overlay
-chmod +x $OVERLAY_DIR/init
-mkdir -p $OVERLAY_DIR/bin
+mkdir -p $OVERLAY_DIR/usr/bin
+# Ensure merged-/usr layout (no /bin directory in overlay)
+if [ -d "$OVERLAY_DIR/bin" ]; then
+    mv "$OVERLAY_DIR/bin"/* "$OVERLAY_DIR/usr/bin/" 2>/dev/null || true
+    rmdir "$OVERLAY_DIR/bin" 2>/dev/null || true
+fi
 # Copy binary only if build succeeded
 if [ -f "target/x86_64-unknown-linux-musl/release/tuffd" ]; then
-    cp target/x86_64-unknown-linux-musl/release/tuffd $OVERLAY_DIR/bin/tuffd
+    cp target/x86_64-unknown-linux-musl/release/tuffd $OVERLAY_DIR/usr/bin/tuffd
+    # Use tuffd as /init for Rust-only user space
+    cp target/x86_64-unknown-linux-musl/release/tuffd $OVERLAY_DIR/init
+    chmod +x $OVERLAY_DIR/init
 else
     echo "[WARN] tuffd binary not found. Skipping overlay copy."
 fi
@@ -49,6 +57,8 @@ make defconfig BR2_DEFCONFIG=$CONFIG_FILE
 
 # Inject Overlay Path directly into .config to ensure it uses absolute path
 sed -i "s|BR2_ROOTFS_OVERLAY=\"\"|BR2_ROOTFS_OVERLAY=\"$OVERLAY_DIR\"|" .config
+# Ensure the kernel fragment path is absolute to avoid missing BR2_EXTERNAL errors
+sed -i "s|^BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES=.*|BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES=\"$KERNEL_FRAGMENT_FILE\"|" .config
 
 # 5. Build
 echo "[INFO] Building TF-Core Image (This takes time)..."
