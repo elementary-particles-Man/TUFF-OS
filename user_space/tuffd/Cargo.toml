@@ -8,10 +8,17 @@ tokio = { version = "1.0", features = ["full"] }
 anyhow = "1.0"
 log = "0.4"
 env_logger = "0.10"
-udev = { version = "0.7", optional = true }
 nix = { version = "0.27", features = ["mount", "fs"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Local dependencies
 tuff_common = { path = "../tuff_common" }
 tuff_crypto = { path = "../../shared/crypto" }
 
+# Optional: Keep udev just in case, but default off for robustness
+udev = { version = "0.7", optional = true }
+
 [features]
-default = ["udev"]
+default = []
+use_udev = ["udev"]
