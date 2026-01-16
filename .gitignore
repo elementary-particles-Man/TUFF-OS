@@ -4,3 +4,4 @@ keys/
 bootloader/output/
 tf_core/buildroot/
 tf_core/buildroot-*/
+tf_core/overlay/bin/
