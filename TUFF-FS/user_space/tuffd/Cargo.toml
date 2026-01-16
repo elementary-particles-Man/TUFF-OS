@@ -1,0 +1,25 @@
+[package]
+name = "tuffd"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+anyhow = "1.0"
+log = "0.4"
+env_logger = "0.10"
+nix = { version = "0.27", features = ["mount", "fs", "process"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = { version = "0.10", default-features = false }
+
+# Local dependencies
+tuff_common = { path = "../tuff_common" }
+tuff_crypto = { path = "../../shared/crypto" }
+
+# Optional: Keep udev just in case, but default off for robustness
+udev = { version = "0.7", optional = true }
+
+[features]
+default = []
+use_udev = ["udev"]

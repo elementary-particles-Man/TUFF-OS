@@ -1,0 +1,12 @@
+[package]
+name = "tuff_schemas"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+# Match system flatc (2.0.8) to avoid generated-code/API mismatches.
+flatbuffers = "2.0.8"
+
+[build-dependencies]
+# No extra build deps needed as we call 'flatc' command directly

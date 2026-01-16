@@ -1,0 +1,74 @@
+// TUFF-FS Schema v1.5 (Final Architecture)
+namespace TuffOS;
+
+// --- Enums ---
+
+enum EntryType : ubyte {
+  File = 0,
+  Directory = 1,
+  Symlink = 2
+}
+
+// Flags for Files
+enum FileFlags : uint {
+  None = 0,
+  Deleted = 1,
+  Hidden = 2,
+  System = 4,
+  Encrypted = 8
+}
+
+// --- Initial Chunk (The Physical Anchor) ---
+// Written once at LBA 0 of each physical disk.
+table InitialChunk {
+  magic: uint64;          // Signature to identify TUFF-FS disk
+  volume_uuid: string;    // Logical Volume this disk belongs to
+  hw_id: uint64;          // Unique ID of THIS physical disk
+  mk_fingerprint: [ubyte];// SHA256(MK) to verify decryption key
+  created_at: int64;
+  sector_size: uint32;    // Physical sector size (e.g., 4096)
+}
+
+// --- Data Chunk Header (Inside Encrypted Payload) ---
+struct DataChunkHeader {
+  // No 'Parity' type anymore, just Data or Replica implicitly
+  flags: ubyte;
+  payload_len: ushort;
+  next_hw_id: uint64;   // Link to next chunk part
+  next_chunk_id: uint64;
+}
+
+// --- File Entry (Lightweight) ---
+table FileEntry {
+  name: string (required, key);
+  size: uint64;
+  type: EntryType = File;
+  mtime: int64;
+  mode: uint32;
+  flags: uint32;
+
+  // Points to the start. The writer scheduler handles N-way replication.
+  start_hw_id: uint64;
+  start_chunk_id: uint64;
+}
+
+// --- Index Chunk Header (The Transaction Root) ---
+table IndexChunkHeader {
+  generation: uint8;      // 1-254 (Rolls over)
+  wrote_flag: bool;       // 0=Processing, 1=Committed
+  timestamp: int64;
+
+  // System-wide Settings stored in the latest index
+  // Scheduler policy: Prefer distinct HWs, fallback to same HW if necessary.
+  default_redundancy: ubyte; // e.g., 1=Single, 2=Mirror, 3=3N
+
+  volume_name: string;
+  prev_chunk_hash: [ubyte];
+}
+
+table IndexChunk {
+  header: IndexChunkHeader (required);
+  entries: [FileEntry];
+}
+
+root_type IndexChunk;

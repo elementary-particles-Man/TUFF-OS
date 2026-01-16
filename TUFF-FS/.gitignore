@@ -1,0 +1,10 @@
+target/
+**/*.rs.bk
+keys/
+bootloader/output/
+tf_core/buildroot/
+tf_core/buildroot-*/
+tf_core/overlay/bin/
+tf_core/overlay/init
+tf_core/overlay/usr/
+shared/schemas/src/generated/

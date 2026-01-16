@@ -1,0 +1,14 @@
+[package]
+name = "tuff_crypto"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["aes"]
+
+[dependencies]
+aes = { version = "0.8", default-features = false, optional = true }
+sha2 = { version = "0.10", default-features = false }
+rand = { version = "0.8", default-features = false, features = ["small_rng"] }
+zeroize = { version = "1.6", default-features = false }
+# anyhow removed for no_std
