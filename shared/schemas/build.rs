@@ -25,10 +25,30 @@ fn main() {
         .arg(schema_file)
         .status();
 
-    // Only panic if flatc is missing or fails, but provide a helpful message
+    // Only panic if flatc is missing or fails, but provide a helpful message.
     match status {
         Ok(s) if !s.success() => panic!("flatc failed. Check your schema syntax."),
-        Err(_) => println!("cargo:warning=flatc not found. Skipping schema generation (assuming generated files exist)."),
+        Err(_) => {
+            println!("cargo:warning=flatc not found. Skipping schema generation (assuming generated files exist).");
+            return;
+        }
         _ => {}
+    }
+
+    // 4. Inject allow attributes into generated code to suppress lifetime warnings.
+    let generated_file = format!("{}/tuff_generated.rs", output_dir);
+    let allow_line = "#[allow(mismatched_lifetime_syntaxes)]\n";
+    if let Ok(contents) = std::fs::read_to_string(&generated_file) {
+        let cleaned = if contents.starts_with("#![allow(mismatched_lifetime_syntaxes)]\n") {
+            contents.replacen("#![allow(mismatched_lifetime_syntaxes)]\n", "", 1)
+        } else {
+            contents
+        };
+        if !cleaned.starts_with(allow_line) {
+            let mut updated = String::with_capacity(allow_line.len() + cleaned.len());
+            updated.push_str(allow_line);
+            updated.push_str(&cleaned);
+            std::fs::write(&generated_file, updated).unwrap();
+        }
     }
 }
