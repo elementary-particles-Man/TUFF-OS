@@ -1,28 +1,64 @@
-// TUFF-OS Data Schema v1.0
+// TUFF-FS Data Schema v1.0 (Final)
 namespace TuffOS;
 
-enum VerificationMode : ubyte { Strict = 0, Warn = 1, Free = 2 }
+// --- Enums ---
 
+enum EntryType : ubyte {
+  File = 0,
+  Directory = 1,
+  Symlink = 2
+}
+
+// File attribute flags
+// 0x01 = Deleted (Tombstone)
+// 0x02 = Hidden
+// 0x04 = System
+// 0x08 = Encrypted (Content is implicitly encrypted by MK+ChunkID)
+enum FileFlags : uint {
+  None = 0,
+  Deleted = 1,
+  Hidden = 2,
+  System = 4,
+  Encrypted = 8
+}
+
+// --- Tables ---
+
+// Lightweight File Entry (~80-100 bytes typical)
 table FileEntry {
-  path: string (required, key);
-  sha256: [ubyte] (required);
+  // Identity
+  name: string (required, key); // Variable length UTF-8
+
+  // Metadata
   size: uint64;
-  su_flag: bool = true;
-  verification_flag: bool = true;
+  type: EntryType = File;
+  mtime: int64;
+  mode: uint32;
+  flags: uint32;
+
+  // Data Location
+  // Points to the first chunk. Subsequent chunks are linked within data chunks.
+  // Redundancy is handled by the writer scheduler, not stored here.
+  start_hw_id: uint64;
+  start_chunk_id: uint64;
 }
 
-table ExecutableUnit {
-  eu_id: string (required);
-  name: string;
-  version: ubyte;
-  eu_hash: [ubyte] (required);
-  files: [FileEntry] (required);
+// Index Chunk Header (The Unit of Consistency)
+table IndexChunkHeader {
+  // Transaction Control
+  generation: uint8;  // 1-254 (Rolls over 0xFE -> 0x01)
+  wrote_flag: bool;   // 0=Processing, 1=Committed
+
+  // Lineage
+  timestamp: int64;
+  prev_chunk_hash: [ubyte];
+  volume_uuid: string;
 }
 
-table VerificationTable {
-  version: ubyte = 1;
-  last_updated: int64;
-  entries: [ExecutableUnit];
+// The Index Chunk Body
+table IndexChunk {
+  header: IndexChunkHeader (required);
+  entries: [FileEntry];
 }
 
-root_type VerificationTable;
+root_type IndexChunk;
