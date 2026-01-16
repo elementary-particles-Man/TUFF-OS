@@ -1,0 +1,11 @@
+[workspace]
+members = [
+    "bootloader/tuffctl_efi",
+    "user_space/tuffd",
+    "user_space/tuffctl",
+    "user_space/tuff_common",
+    "shared/crypto",
+    "shared/verify",
+    "shared/schemas"
+]
+resolver = "2"

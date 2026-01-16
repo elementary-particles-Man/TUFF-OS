@@ -1,0 +1,9 @@
+[package]
+name = "tuffctl_efi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+uefi = "0.24"
+uefi-services = "0.21"
+log = "0.4"

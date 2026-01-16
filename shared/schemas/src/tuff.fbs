@@ -1,0 +1,32 @@
+// TUFF-OS Data Schema v1.0
+namespace TuffOS;
+
+enum VerificationMode : ubyte {
+  Strict = 0,
+  Warn = 1,
+  Free = 2
+}
+
+table FileEntry {
+  path: string (required, key);
+  sha256: [ubyte] (required);
+  size: uint64;
+  su_flag: bool = true;
+  verification_flag: bool = true;
+}
+
+table ExecutableUnit {
+  eu_id: string (required);
+  name: string;
+  version: ubyte;
+  eu_hash: [ubyte] (required);
+  files: [FileEntry] (required);
+}
+
+table VerificationTable {
+  version: ubyte = 1;
+  last_updated: int64;
+  entries: [ExecutableUnit];
+}
+
+root_type VerificationTable;
