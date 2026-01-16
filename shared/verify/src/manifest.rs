@@ -1,0 +1,1 @@
+// Manifest parsing placeholder.

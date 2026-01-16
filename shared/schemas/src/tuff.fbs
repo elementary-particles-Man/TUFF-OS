@@ -1,11 +1,7 @@
 // TUFF-OS Data Schema v1.0
 namespace TuffOS;
 
-enum VerificationMode : ubyte {
-  Strict = 0,
-  Warn = 1,
-  Free = 2
-}
+enum VerificationMode : ubyte { Strict = 0, Warn = 1, Free = 2 }
 
 table FileEntry {
   path: string (required, key);
