@@ -11,8 +11,21 @@ use crate::events::{TuffLogEntry, LogLevel, TuffEvent};
 pub async fn wait_for_key() -> Result<Option<(Vec<u8>, String)>> {
     info!("Starting USB Key polling...");
 
+    let mut attempt_count = 0u64;
+
     // Polling loop
     loop {
+        // Log "Searching" event every ~30 seconds (15 attempts * 2 sec)
+        if attempt_count % 15 == 0 {
+            TuffLogEntry::new(
+                LogLevel::Info,
+                TuffEvent::KeySearch {
+                    status: format!("Scanning for TUFF-KEY (Attempt {})...", attempt_count),
+                },
+            ).log();
+        }
+        attempt_count += 1;
+
         let usb_devices = scan_usb_devices()?;
 
         for device_path in usb_devices {
