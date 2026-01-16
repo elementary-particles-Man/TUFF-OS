@@ -6,6 +6,5 @@ edition = "2021"
 [dependencies]
 tuff_schemas = { path = "../schemas" }
 tuff_crypto = { path = "../crypto" }
-sha2 = "0.10"
-hex = "0.4"
-anyhow = "1.0"
+sha2 = { version = "0.10", default-features = false }
+hex = { version = "0.4", default-features = false, features = ["alloc"] }

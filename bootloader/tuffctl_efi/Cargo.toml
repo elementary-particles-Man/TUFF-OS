@@ -7,3 +7,5 @@ edition = "2021"
 uefi = "0.24"
 uefi-services = "0.21"
 log = "0.4"
+tuff_verify = { path = "../../shared/verify" }
+tuff_crypto = { path = "../../shared/crypto" }
