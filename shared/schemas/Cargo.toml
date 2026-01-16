@@ -2,10 +2,11 @@
 name = "tuff_schemas"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 
 [dependencies]
-flatbuffers = "23.5.26"
-serde = { version = "1.0", features = ["derive"] }
+# Match system flatc (2.0.8) to avoid generated-code/API mismatches.
+flatbuffers = "2.0.8"
 
 [build-dependencies]
-flatbuffers = "23.5.26"
+# No extra build deps needed as we call 'flatc' command directly

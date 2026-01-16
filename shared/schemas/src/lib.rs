@@ -1,5 +1,7 @@
 // Re-export generated FlatBuffers modules
-#[allow(dead_code, unused_imports)]
+
+// Suppress warnings for auto-generated code (FlatBuffers)
+#[allow(dead_code, unused_imports, clippy::all)]
 #[path = "generated/tuff_generated.rs"]
 pub mod tuff;
 
